@@ -8,7 +8,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import date, timedelta
 from loguru import logger
+from sqlmodel import select
 
+from app.database import get_session
+from app.models.parcel import Parcel
 from app.services.sigpac_service import SIGPACClient
 from app.services.xema_service import get_xema_client
 from app.services.sentinel_service import SentinelService
@@ -88,6 +91,38 @@ async def run_pipeline(req: PipelineRequest):
     except Exception as e:
         logger.error(f"XEMA error: {e}")
         meteo_summary = {"error": str(e)}
+
+    with get_session() as session:
+        existing = session.exec(
+            select(Parcel).where(Parcel.ref_catastral == parcel["ref_catastral"])
+        ).first()
+        ndvi_mean = None
+        if ndvi_records:
+            values = [r.get("ndvi_mean") for r in ndvi_records if r.get("ndvi_mean") is not None]
+            ndvi_mean = round(sum(values) / len(values), 3) if values else None
+
+        if existing is None:
+            existing = Parcel(
+                ref_catastral=parcel["ref_catastral"],
+                area_ha=parcel["area_ha"],
+                uso_sigpac=parcel.get("uso_sigpac"),
+                municipio=parcel.get("municipio"),
+                provincia=parcel.get("provincia"),
+                centroid_lat=parcel["centroid"]["lat"],
+                centroid_lon=parcel["centroid"]["lon"],
+                ndvi_mean=ndvi_mean,
+            )
+            session.add(existing)
+        else:
+            existing.area_ha = parcel["area_ha"]
+            existing.uso_sigpac = parcel.get("uso_sigpac")
+            existing.municipio = parcel.get("municipio")
+            existing.provincia = parcel.get("provincia")
+            existing.centroid_lat = parcel["centroid"]["lat"]
+            existing.centroid_lon = parcel["centroid"]["lon"]
+            existing.ndvi_mean = ndvi_mean
+
+        session.commit()
 
     logger.info(f"Pipeline complete: {req.ref_catastral}")
     return PipelineResponse(

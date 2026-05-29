@@ -2,6 +2,9 @@ from fastapi import FastAPI
 
 from app.api.carbon import router as carbon_router
 from app.api.pipeline import router as pipeline_router
+from app.database import init_db
+from app.models.parcel import Parcel
+from app.models.result import CarbonCalculation
 
 app = FastAPI(
     title="Carbon Farming Tracker API",
@@ -11,6 +14,11 @@ app = FastAPI(
 
 app.include_router(carbon_router)
 app.include_router(pipeline_router)
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 @app.get("/health")

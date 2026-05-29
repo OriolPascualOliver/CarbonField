@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    DATABASE_URL: str = "sqlite:///./dev.db"
     COPERNICUS_USER: str | None = None
     COPERNICUS_PASSWORD: str | None = None
 

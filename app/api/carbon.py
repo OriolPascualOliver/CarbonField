@@ -2,18 +2,27 @@
 Carbon calculation API endpoint.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
 from loguru import logger
+from sqlmodel import Session
 
+from app.database import get_session
+from app.models.result import CarbonCalculation
 from app.services.carbon_model import CarbonModel, CarbonInputs, CROP_BIOMASS_REF, SIGPAC_TO_CROP
 
 router = APIRouter(prefix="/carbon", tags=["carbon"])
 model = CarbonModel()
 
 
+def get_db():
+    with get_session() as session:
+        yield session
+
+
 class CarbonRequest(BaseModel):
+    ref_catastral: Optional[str] = Field(None, description="Referencia catastral de la parcela")
     area_ha: float = Field(..., gt=0, description="Área parcela en hectáreas")
     crop_type: str = Field(..., description=f"Cultivo: {list(CROP_BIOMASS_REF.keys())}")
     tillage_practice: str = Field("conventional", description="conventional|min_tillage|no_till")
@@ -52,7 +61,7 @@ class ProjectionRequest(BaseModel):
 
 
 @router.post("/calculate", response_model=CarbonResponse)
-async def calculate_carbon(req: CarbonRequest):
+async def calculate_carbon(req: CarbonRequest, db: Session = Depends(get_db)):
     """
     Calcula tCO₂e secuestradas/año para una parcela.
     Si se pasa sigpac_use, auto-detecta crop_type.
@@ -75,6 +84,27 @@ async def calculate_carbon(req: CarbonRequest):
     )
 
     result = model.calculate(inputs)
+
+    calculation = CarbonCalculation(
+        ref_catastral=req.ref_catastral,
+        area_ha=result.area_ha,
+        crop_type=result.crop_type,
+        tillage_practice=result.tillage_practice,
+        input_level=req.input_level,
+        has_cover_crops=req.has_cover_crops,
+        climate_zone=req.climate_zone,
+        ndvi_mean=req.ndvi_mean,
+        total_co2e_t_yr=result.total_co2e_t_yr,
+        total_carbon_tc_yr=result.total_carbon_tc_yr,
+        soc_delta_tc_yr=result.delta_soc_total_tc_yr,
+        biomass_carbon_tc=result.biomass_carbon_total_tc,
+        confidence=result.confidence,
+        uncertainty_pct=result.uncertainty_pct,
+        scenarios=result.scenarios,
+    )
+    db.add(calculation)
+    db.commit()
+    db.refresh(calculation)
 
     return CarbonResponse(
         area_ha=result.area_ha,

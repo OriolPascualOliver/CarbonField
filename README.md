@@ -86,8 +86,10 @@ COPERNICUS_PASSWORD=tu_password
 # → http://localhost:8501
 
 # Con Docker (incluye PostgreSQL)
-docker compose up
+docker compose up --build
 # Streamlit → :8501  |  FastAPI → :8000  |  API docs → :8000/docs
+
+> Si no usas PostgreSQL, el backend usa SQLite local con `DATABASE_URL=sqlite:///./dev.db`.
 ```
 
 ### Tests
